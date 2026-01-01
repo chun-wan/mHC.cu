@@ -30,11 +30,11 @@ int main() {
     };
     int num_configs = sizeof(configs) / sizeof(configs[0]);
 
-    printf("MHC Layer End-to-End Benchmark (Expanded Residual Stream)\n");
+    printf("MHC Layer End-to-End Benchmark\n");
     printf("==========================================================\n");
-    printf("Pipeline: Aggregate(H_pre) -> RMSNorm -> Distribute(H_post) + Mix(M)\n");
-    printf("Input shape: [B, n, C] (expanded residual stream)\n");
-    printf("PDL: %s\n\n",
+    printf("Pipeline as seen in the paper: Aggregate(H_pre) -> RMSNorm -> Distribute(H_post) + Mix(M)\n");
+    printf("Input shape: [B, n, C]\n");
+    printf("PDL path: %s\n\n",
 #ifdef MHC_ENABLE_PDL
         "Enabled"
 #else
@@ -42,7 +42,7 @@ int main() {
 #endif
     );
 
-    printf("%6s %6s %4s %12s %14s %12s\n", "Batch", "Hidden", "n", "Time (us)", "Throughput", "BW (GB/s)");
+    printf("%6s %6s %4s %12s %14s %12s\n", "Batch", "Hidden", "n", "Time (us)", "Throughput", "Bandwidth (GB/s)");
     printf("------------------------------------------------------------------\n");
 
     for (int c = 0; c < num_configs; c++) {

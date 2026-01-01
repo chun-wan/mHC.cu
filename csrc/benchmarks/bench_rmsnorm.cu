@@ -117,10 +117,10 @@ int main() {
     };
     int num_configs = sizeof(configs) / sizeof(configs[0]);
 
-    printf("RMSNorm Benchmark (BF16, L2 flushed)\n");
+    printf("RMSNorm Benchmark\n");
     printf("====================================\n");
-    printf("%8s %8s %12s %12s\n", "N", "C", "Time (us)", "BW (GB/s)");
-    printf("------------------------------------------\n");
+    printf("%8s %8s %12s %12s\n", "N", "C", "Time (us)", "Bandwidth (GB/s)");
+    printf("---------------------------------------------------\n");
 
     for (int c = 0; c < num_configs; c++) {
         int N = configs[c][0];
@@ -179,7 +179,7 @@ int main() {
         free(h_weight);
     }
 
-    printf("\n--- Phase Breakdown (N=1024, C=4096) ---\n");
+    printf("\n--- Step Breakdown (N=1024, C=4096) ---\n");
     {
         int N = 1024, C = 4096;
 
