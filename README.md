@@ -20,14 +20,15 @@ make clean        # clean build
 ## Test
 
 ```bash
-make test         # C++ tests
+make test         # C++ / CUDA tests
 make test-python  # Python tests
 ```
 
 ## Benchmark
 
 ```bash
-make bench        # run all benchmarks
+make bench        # run all C++ / CUDA benchmarks
+make bench-python # run all Python benchmarks
 ```
 
 ## Format
