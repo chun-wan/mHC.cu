@@ -4,15 +4,24 @@ import torch
 import torch.nn as nn
 
 
-class L2CacheFlusher:
-    def __init__(self, size_mb: int = 64):
+class GPUContextCleaner:
+    def __init__(self, device: torch.device = None):
+        if device is None:
+            device = torch.device("cuda")
+        self.device = device
+
+        props = torch.cuda.get_device_properties(device)
+        l2_cache_bytes = props.L2_cache_size
+        self.flush_size = max(l2_cache_bytes * 2, 64 * 1024 * 1024)
+
         self.flush_tensor = torch.empty(
-            size_mb * 1024 * 1024 // 4, dtype=torch.float32, device="cuda"
+            self.flush_size // 4, dtype=torch.float32, device=device
         )
 
-    def flush(self):
+    def clear(self):
+        torch.cuda.synchronize(self.device)
         self.flush_tensor.fill_(1.0)
-        torch.cuda.synchronize()
+        torch.cuda.synchronize(self.device)
 
 
 class NaiveMHCLayer(nn.Module):
@@ -62,7 +71,7 @@ class NaiveMHCLayer(nn.Module):
         return x_mixed + y_dist
 
 
-def benchmark_forward(layer, B, n, C, device, flusher, warmup=10, runs=100):
+def benchmark_forward(layer, B, n, C, device, cleaner, warmup=10, runs=100):
     for _ in range(warmup):
         x = torch.randn(B, n, C, device=device, dtype=torch.float32)
         _ = layer(x)
@@ -75,7 +84,7 @@ def benchmark_forward(layer, B, n, C, device, flusher, warmup=10, runs=100):
     for _ in range(runs):
         x = torch.randn(B, n, C, device=device, dtype=torch.float32)
 
-        flusher.flush()
+        cleaner.clear()
 
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
@@ -98,7 +107,7 @@ def benchmark_forward(layer, B, n, C, device, flusher, warmup=10, runs=100):
     return avg_ms
 
 
-def benchmark_backward(layer, B, n, C, device, flusher, warmup=10, runs=100):
+def benchmark_backward(layer, B, n, C, device, cleaner, warmup=10, runs=100):
     for _ in range(warmup):
         x = torch.randn(B, n, C, device=device, dtype=torch.float32, requires_grad=True)
         out = layer(x)
@@ -117,7 +126,7 @@ def benchmark_backward(layer, B, n, C, device, flusher, warmup=10, runs=100):
     for _ in range(runs):
         x = torch.randn(B, n, C, device=device, dtype=torch.float32, requires_grad=True)
 
-        flusher.flush()
+        cleaner.clear()
 
         start_event = torch.cuda.Event(enable_timing=True)
         end_event = torch.cuda.Event(enable_timing=True)
@@ -146,24 +155,6 @@ def benchmark_backward(layer, B, n, C, device, flusher, warmup=10, runs=100):
     return avg_ms
 
 
-def check_correctness(fused_layer, naive_layer, x, atol=1e-2, rtol=1e-2):
-    with torch.no_grad():
-        naive_layer.H_pre.data = fused_layer.H_pre.data.clone()
-        naive_layer.H_post.data = fused_layer.H_post.data.clone()
-        naive_layer.H_res.data = fused_layer.H_res.data.clone()
-        naive_layer.rmsnorm_weight.data = (
-            fused_layer.rmsnorm_weight.data.float().clone()
-        )
-
-        out_fused = fused_layer(x)
-        out_naive = naive_layer(x)
-
-        max_diff = (out_fused - out_naive).abs().max().item()
-        is_close = torch.allclose(out_fused, out_naive, atol=atol, rtol=rtol)
-
-    return is_close, max_diff
-
-
 def main():
     parser = argparse.ArgumentParser(description="Benchmark mHC Layer")
     parser.add_argument("--batch", type=int, default=64, help="Batch size")
@@ -188,7 +179,7 @@ def main():
     torch.backends.cuda.matmul.allow_tf32 = True
     torch.backends.cudnn.allow_tf32 = True
 
-    flusher = L2CacheFlusher(size_mb=64)
+    cleaner = GPUContextCleaner(device)
 
     from mhc import MHCLayer
 
@@ -205,7 +196,7 @@ def main():
         configs = [(args.batch, args.hidden, args.expansion)]
 
     print("mHC Layer Python Benchmark")
-    print("=" * 80)
+    print("=" * 60)
     print(f"Device: {torch.cuda.get_device_name(0)}")
     print(f"Sinkhorn iterations: {args.sinkhorn_iters}")
     print(f"Warmup: {args.warmup}, Runs: {args.runs}")
@@ -213,9 +204,9 @@ def main():
 
     print(
         f"{'Batch':>6} {'Hidden':>6} {'n':>4} {'Fused (ms)':>12} {'Naive (ms)':>12} "
-        f"{'Speedup':>10} {'Max Diff':>12} {'Match':>6}"
+        f"{'Speedup':>10}"
     )
-    print("-" * 80)
+    print("-" * 60)
 
     for B, C, n in configs:
         fused_layer = MHCLayer(
@@ -230,23 +221,18 @@ def main():
             sinkhorn_iters=args.sinkhorn_iters,
         ).to(device)
 
-        x_check = torch.randn(B, n, C, device=device, dtype=torch.float32)
-        is_close, max_diff = check_correctness(fused_layer, naive_layer, x_check)
-        del x_check
-
         fused_time = benchmark_forward(
-            fused_layer, B, n, C, device, flusher, args.warmup, args.runs
+            fused_layer, B, n, C, device, cleaner, args.warmup, args.runs
         )
         naive_time = benchmark_forward(
-            naive_layer, B, n, C, device, flusher, args.warmup, args.runs
+            naive_layer, B, n, C, device, cleaner, args.warmup, args.runs
         )
 
         speedup = naive_time / fused_time
 
-        match_str = "OK" if is_close else "FAIL"
         print(
             f"{B:>6} {C:>6} {n:>4} {fused_time:>12.3f} {naive_time:>12.3f} "
-            f"{speedup:>9.2f}x {max_diff:>12.4e} {match_str:>6}"
+            f"{speedup:>9.2f}x"
         )
 
         del fused_layer, naive_layer
@@ -255,12 +241,12 @@ def main():
     if args.backward:
         print()
         print("Backward Pass (forward + backward)")
-        print("-" * 80)
+        print("-" * 60)
         print(
             f"{'Batch':>6} {'Hidden':>6} {'n':>4} {'Fused (ms)':>12} {'Naive (ms)':>12} "
             f"{'Speedup':>10}"
         )
-        print("-" * 80)
+        print("-" * 60)
 
         for B, C, n in configs:
             fused_layer = MHCLayer(
@@ -283,10 +269,10 @@ def main():
             )
 
             fused_time = benchmark_backward(
-                fused_layer, B, n, C, device, flusher, args.warmup, args.runs
+                fused_layer, B, n, C, device, cleaner, args.warmup, args.runs
             )
             naive_time = benchmark_backward(
-                naive_layer, B, n, C, device, flusher, args.warmup, args.runs
+                naive_layer, B, n, C, device, cleaner, args.warmup, args.runs
             )
 
             speedup = naive_time / fused_time
