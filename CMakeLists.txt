@@ -64,6 +64,17 @@ if(MHC_ENABLE_PDL)
     target_compile_definitions(bench_sinkhorn_knopp PRIVATE MHC_ENABLE_PDL)
 endif()
 
+add_executable(bench_sinkhorn_knopp_backward
+    csrc/benchmarks/bench_sinkhorn_knopp_backward.cu
+)
+target_link_libraries(bench_sinkhorn_knopp_backward PRIVATE mhc_kernels)
+target_compile_options(bench_sinkhorn_knopp_backward PRIVATE
+    $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
+)
+if(MHC_ENABLE_PDL)
+    target_compile_definitions(bench_sinkhorn_knopp_backward PRIVATE MHC_ENABLE_PDL)
+endif()
+
 add_executable(test_mhc_layer
     csrc/tests/test_mhc_layer.cu
 )
@@ -194,4 +205,15 @@ target_compile_options(bench_fused_rmsnorm_matmul PRIVATE
 )
 if(MHC_ENABLE_PDL)
     target_compile_definitions(bench_fused_rmsnorm_matmul PRIVATE MHC_ENABLE_PDL)
+endif()
+
+add_executable(bench_fused_rmsnorm_matmul_backward
+    csrc/benchmarks/bench_fused_rmsnorm_matmul_backward.cu
+)
+target_link_libraries(bench_fused_rmsnorm_matmul_backward PRIVATE mhc_kernels)
+target_compile_options(bench_fused_rmsnorm_matmul_backward PRIVATE
+    $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
+)
+if(MHC_ENABLE_PDL)
+    target_compile_definitions(bench_fused_rmsnorm_matmul_backward PRIVATE MHC_ENABLE_PDL)
 endif()
