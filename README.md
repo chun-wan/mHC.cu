@@ -45,7 +45,7 @@ in section A.1):
 | 1280  | 2560   | 4 | 8.0x    | 3.7x     |
 | 2560  | 1280   | 4 | 7.9x    | 3.6x     |
 
-**Dynamic H Path** (per-batch H values -> this matches paper architecture as presented in Equations 5-10):
+**Dynamic H Path** (per-batch H values -> this matches paper architecture as presented in Equations 7-9):
 
 | Batch | Hidden | n | Forward | Backward |
 |-------|--------|---|---------|----------|

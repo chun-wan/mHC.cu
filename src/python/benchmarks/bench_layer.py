@@ -73,7 +73,7 @@ class NaiveMHCLayer(nn.Module):
 
 class NaiveMHCLayerDynamic(nn.Module):
     """
-    Dynamic H computation as per the paper (Equations: 5-10):
+    Dynamic H computation as per the paper (Equations: 7-9):
     1. Flatten x -> RMSNorm -> Linear projections to get tilde_H values
     2. H_pre = sigmoid(tilde_H_pre), H_post = 2*sigmoid(tilde_H_post)
     3. M = Sinkhorn-Knopp(tilde_H_res)
