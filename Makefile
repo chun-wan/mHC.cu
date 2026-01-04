@@ -5,7 +5,7 @@ BUILD_DIR = build
 STAMP_DIR = .stamps
 
 CSRC_FILES := $(shell find src/csrc -name '*.cu' -o -name '*.cuh' -o -name '*.h' -o -name '*.cpp' 2>/dev/null)
-PYTHON_FILES := $(shell find src/python -name '*.py' -o -name '*.cu' 2>/dev/null)
+BINDING_FILES := src/python/bindings.cu setup.py pyproject.toml
 
 all: build
 
@@ -20,7 +20,8 @@ $(STAMP_DIR)/build: $(CSRC_FILES) | $(STAMP_DIR)
 
 build: $(STAMP_DIR)/build
 
-$(STAMP_DIR)/install: $(PYTHON_FILES) setup.py pyproject.toml | $(STAMP_DIR)
+$(STAMP_DIR)/install: $(CSRC_FILES) $(BINDING_FILES) | $(STAMP_DIR)
+	@echo "csrc code was updated, rebuilding full mhc extension..."
 	pip install -e . -q
 	@touch $@
 
