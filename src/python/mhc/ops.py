@@ -154,6 +154,13 @@ class MHCLayerDynamicFunction(Function):
         sinkhorn_iters,
         eps,
     ):
+        n = phi_pre.size(0)
+        phi_concat = (
+            torch.cat([phi_pre, phi_post, phi_res.view(n * n, -1)], dim=0)
+            .bfloat16()
+            .contiguous()
+        )
+
         (
             output,
             rms,
@@ -167,9 +174,7 @@ class MHCLayerDynamicFunction(Function):
         ) = mhc_cuda.mhc_layer_fwd_dynamic(
             x_expanded.contiguous(),
             rmsnorm_weight.contiguous(),
-            phi_pre.contiguous(),
-            phi_post.contiguous(),
-            phi_res.contiguous(),
+            phi_concat,
             alpha_pre,
             alpha_post,
             alpha_res,

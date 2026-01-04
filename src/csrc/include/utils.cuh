@@ -171,6 +171,85 @@ inline void apply_alpha_bias_exp(float* out, const float* inp, float alpha, cons
 #endif
 }
 
+template<int BLOCK_SIZE>
+__global__ void fused_h_activations_kernel(
+    float* __restrict__ H_pre_out, float* __restrict__ H_post_out, float* __restrict__ H_res_out,
+    const float* __restrict__ H_proj_concat, const float* __restrict__ rms, float alpha_pre,
+    float alpha_post, float alpha_res, const float* __restrict__ b_pre,
+    const float* __restrict__ b_post, const float* __restrict__ b_res, int B, int n) {
+    int n_sq = n * n;
+    int total_pre = B * n;
+    int total_post = B * n;
+    int total_res = B * n_sq;
+    int stride = n + n + n_sq;
+
+    int idx = blockIdx.x * BLOCK_SIZE + threadIdx.x;
+
+    if (idx < total_pre) {
+        int b = idx / n;
+        int j = idx % n;
+        float r_inv = 1.0f / rms[b];
+        float val = H_proj_concat[b * stride + j];
+        val = alpha_pre * val * r_inv + b_pre[j];
+        H_pre_out[idx] = fast_sigmoid(val);
+    }
+
+    int idx2 = idx;
+    if (idx2 < total_post) {
+        int b = idx2 / n;
+        int j = idx2 % n;
+        float r_inv = 1.0f / rms[b];
+        float val = H_proj_concat[b * stride + n + j];
+        val = alpha_post * val * r_inv + b_post[j];
+        H_post_out[idx2] = 2.0f * fast_sigmoid(val);
+    }
+
+    int idx3 = idx;
+    if (idx3 < total_res) {
+        int b = idx3 / n_sq;
+        int local = idx3 % n_sq;
+        int i = local / n;
+        int j = local % n;
+        float r_inv = 1.0f / rms[b];
+        float val = H_proj_concat[b * stride + n + n + local];
+        val = alpha_res * val * r_inv + b_res[i * n + j];
+        H_res_out[idx3] = fast_exp(val);
+    }
+}
+
+inline void fused_h_activations(float* H_pre_out, float* H_post_out, float* H_res_out,
+                                const float* H_proj_concat, const float* rms, float alpha_pre,
+                                float alpha_post, float alpha_res, const float* b_pre,
+                                const float* b_post, const float* b_res, int B, int n,
+                                cudaStream_t stream = nullptr) {
+    constexpr int BLOCK = 256;
+    int n_sq = n * n;
+    int max_total = B * n_sq;
+    int blocks = (max_total + BLOCK - 1) / BLOCK;
+
+#ifdef MHC_ENABLE_PDL
+    cudaLaunchAttribute attrs[1];
+    attrs[0].id = cudaLaunchAttributeProgrammaticStreamSerialization;
+    attrs[0].val.programmaticStreamSerializationAllowed = 1;
+
+    cudaLaunchConfig_t config = {};
+    config.numAttrs = 1;
+    config.attrs = attrs;
+    config.blockDim = {BLOCK, 1, 1};
+    config.gridDim = {(unsigned int)blocks, 1, 1};
+    config.dynamicSmemBytes = 0;
+    config.stream = stream;
+
+    cudaLaunchKernelEx(&config, fused_h_activations_kernel<BLOCK>, H_pre_out, H_post_out, H_res_out,
+                       H_proj_concat, rms, alpha_pre, alpha_post, alpha_res, b_pre, b_post, b_res,
+                       B, n);
+#else
+    fused_h_activations_kernel<BLOCK><<<blocks, BLOCK, 0, stream>>>(
+        H_pre_out, H_post_out, H_res_out, H_proj_concat, rms, alpha_pre, alpha_post, alpha_res,
+        b_pre, b_post, b_res, B, n);
+#endif
+}
+
 __global__ void flush_l2_kernel(float* buf, int size) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     if (idx < size) {

@@ -22,13 +22,10 @@ struct CublasLtCache {
     cublasLtHandle_t handle = nullptr;
     cublasLtMatmulDesc_t matmul_desc = nullptr;
     cublasLtMatrixLayout_t A_desc = nullptr;
-    cublasLtMatrixLayout_t B_n_desc = nullptr;
-    cublasLtMatrixLayout_t C_n_desc = nullptr;
-    cublasLtMatrixLayout_t B_nn_desc = nullptr;
-    cublasLtMatrixLayout_t C_nn_desc = nullptr;
+    cublasLtMatrixLayout_t B_concat_desc = nullptr;
+    cublasLtMatrixLayout_t C_concat_desc = nullptr;
     cublasLtMatmulPreference_t pref = nullptr;
-    cublasLtMatmulHeuristicResult_t heuristic_n;
-    cublasLtMatmulHeuristicResult_t heuristic_nn;
+    cublasLtMatmulHeuristicResult_t heuristic_concat;
     void* workspace = nullptr;
     size_t workspace_size = 4 * 1024 * 1024;
     int cached_B = 0, cached_n = 0, cached_nC = 0;
@@ -43,6 +40,8 @@ struct CublasLtCache {
         cached_B = B;
         cached_n = n;
         cached_nC = nC;
+
+        int out_dim = n + n + n * n;
 
         CHECK_CUBLAS(cublasLtCreate(&handle));
         CHECK_CUDA(cudaMalloc(&workspace, workspace_size));
@@ -61,18 +60,11 @@ struct CublasLtCache {
         CHECK_CUBLAS(cublasLtMatrixLayoutSetAttribute(A_desc, CUBLASLT_MATRIX_LAYOUT_ORDER,
                                                       &row_order, sizeof(row_order)));
 
-        CHECK_CUBLAS(cublasLtMatrixLayoutCreate(&B_n_desc, CUDA_R_16BF, n, nC, nC));
-        CHECK_CUBLAS(cublasLtMatrixLayoutSetAttribute(B_n_desc, CUBLASLT_MATRIX_LAYOUT_ORDER,
+        CHECK_CUBLAS(cublasLtMatrixLayoutCreate(&B_concat_desc, CUDA_R_16BF, out_dim, nC, nC));
+        CHECK_CUBLAS(cublasLtMatrixLayoutSetAttribute(B_concat_desc, CUBLASLT_MATRIX_LAYOUT_ORDER,
                                                       &row_order, sizeof(row_order)));
-        CHECK_CUBLAS(cublasLtMatrixLayoutCreate(&C_n_desc, CUDA_R_32F, B, n, n));
-        CHECK_CUBLAS(cublasLtMatrixLayoutSetAttribute(C_n_desc, CUBLASLT_MATRIX_LAYOUT_ORDER,
-                                                      &row_order, sizeof(row_order)));
-
-        CHECK_CUBLAS(cublasLtMatrixLayoutCreate(&B_nn_desc, CUDA_R_16BF, n * n, nC, nC));
-        CHECK_CUBLAS(cublasLtMatrixLayoutSetAttribute(B_nn_desc, CUBLASLT_MATRIX_LAYOUT_ORDER,
-                                                      &row_order, sizeof(row_order)));
-        CHECK_CUBLAS(cublasLtMatrixLayoutCreate(&C_nn_desc, CUDA_R_32F, B, n * n, n * n));
-        CHECK_CUBLAS(cublasLtMatrixLayoutSetAttribute(C_nn_desc, CUBLASLT_MATRIX_LAYOUT_ORDER,
+        CHECK_CUBLAS(cublasLtMatrixLayoutCreate(&C_concat_desc, CUDA_R_32F, B, out_dim, out_dim));
+        CHECK_CUBLAS(cublasLtMatrixLayoutSetAttribute(C_concat_desc, CUBLASLT_MATRIX_LAYOUT_ORDER,
                                                       &row_order, sizeof(row_order)));
 
         CHECK_CUBLAS(cublasLtMatmulPreferenceCreate(&pref));
@@ -81,13 +73,9 @@ struct CublasLtCache {
                                                           &workspace_size, sizeof(workspace_size)));
 
         int returned = 0;
-        CHECK_CUBLAS(cublasLtMatmulAlgoGetHeuristic(handle, matmul_desc, A_desc, B_n_desc, C_n_desc,
-                                                    C_n_desc, pref, 1, &heuristic_n, &returned));
-
-        returned = 0;
-        CHECK_CUBLAS(cublasLtMatmulAlgoGetHeuristic(handle, matmul_desc, A_desc, B_nn_desc,
-                                                    C_nn_desc, C_nn_desc, pref, 1, &heuristic_nn,
-                                                    &returned));
+        CHECK_CUBLAS(cublasLtMatmulAlgoGetHeuristic(handle, matmul_desc, A_desc, B_concat_desc,
+                                                    C_concat_desc, C_concat_desc, pref, 1,
+                                                    &heuristic_concat, &returned));
 
         initialized = true;
     }
@@ -99,14 +87,10 @@ struct CublasLtCache {
             cublasLtMatmulPreferenceDestroy(pref);
         if (A_desc)
             cublasLtMatrixLayoutDestroy(A_desc);
-        if (B_n_desc)
-            cublasLtMatrixLayoutDestroy(B_n_desc);
-        if (C_n_desc)
-            cublasLtMatrixLayoutDestroy(C_n_desc);
-        if (B_nn_desc)
-            cublasLtMatrixLayoutDestroy(B_nn_desc);
-        if (C_nn_desc)
-            cublasLtMatrixLayoutDestroy(C_nn_desc);
+        if (B_concat_desc)
+            cublasLtMatrixLayoutDestroy(B_concat_desc);
+        if (C_concat_desc)
+            cublasLtMatrixLayoutDestroy(C_concat_desc);
         if (matmul_desc)
             cublasLtMatmulDescDestroy(matmul_desc);
         if (handle)
@@ -115,10 +99,8 @@ struct CublasLtCache {
             cudaFree(workspace);
         pref = nullptr;
         A_desc = nullptr;
-        B_n_desc = nullptr;
-        C_n_desc = nullptr;
-        B_nn_desc = nullptr;
-        C_nn_desc = nullptr;
+        B_concat_desc = nullptr;
+        C_concat_desc = nullptr;
         matmul_desc = nullptr;
         handle = nullptr;
         workspace = nullptr;
@@ -299,21 +281,20 @@ mhc_layer_bwd(torch::Tensor grad_output, torch::Tensor x_expanded, torch::Tensor
 
 std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor,
            torch::Tensor, torch::Tensor, torch::Tensor>
-mhc_layer_fwd_dynamic(torch::Tensor x_expanded, torch::Tensor rmsnorm_weight, torch::Tensor phi_pre,
-                      torch::Tensor phi_post, torch::Tensor phi_res, float alpha_pre,
-                      float alpha_post, float alpha_res, torch::Tensor b_pre, torch::Tensor b_post,
+mhc_layer_fwd_dynamic(torch::Tensor x_expanded, torch::Tensor rmsnorm_weight,
+                      torch::Tensor phi_concat_bf16, float alpha_pre, float alpha_post,
+                      float alpha_res, torch::Tensor b_pre, torch::Tensor b_post,
                       torch::Tensor b_res, int sinkhorn_iters, float eps) {
     CHECK_INPUT(x_expanded);
     CHECK_INPUT(rmsnorm_weight);
-    CHECK_INPUT(phi_pre);
-    CHECK_INPUT(phi_post);
-    CHECK_INPUT(phi_res);
+    CHECK_INPUT(phi_concat_bf16);
     CHECK_INPUT(b_pre);
     CHECK_INPUT(b_post);
     CHECK_INPUT(b_res);
 
     int B = x_expanded.size(0), n = x_expanded.size(1), C = x_expanded.size(2);
     int nC = n * C;
+    int out_dim = n + n + n * n;
     cudaStream_t stream = at::cuda::getCurrentCUDAStream();
 
     auto x_f32 = x_expanded.to(torch::kFloat32).contiguous();
@@ -325,13 +306,7 @@ mhc_layer_fwd_dynamic(torch::Tensor x_expanded, torch::Tensor rmsnorm_weight, to
                 reinterpret_cast<const floatX*>(x_flat_bf16.data_ptr<at::BFloat16>()), B, nC, eps,
                 stream);
 
-    auto phi_pre_bf16 = phi_pre.to(torch::kBFloat16).contiguous();
-    auto phi_post_bf16 = phi_post.to(torch::kBFloat16).contiguous();
-    auto phi_res_bf16 = phi_res.to(torch::kBFloat16).contiguous();
-
-    auto H_pre_proj = torch::empty({B, n}, x_expanded.options().dtype(torch::kFloat32));
-    auto H_post_proj = torch::empty({B, n}, x_expanded.options().dtype(torch::kFloat32));
-    auto H_res_proj = torch::empty({B, n * n}, x_expanded.options().dtype(torch::kFloat32));
+    auto H_proj_concat = torch::empty({B, out_dim}, x_expanded.options().dtype(torch::kFloat32));
 
     g_cublas_cache.init(B, n, nC);
 
@@ -339,44 +314,22 @@ mhc_layer_fwd_dynamic(torch::Tensor x_expanded, torch::Tensor rmsnorm_weight, to
 
     CHECK_CUBLAS(cublasLtMatmul(g_cublas_cache.handle, g_cublas_cache.matmul_desc, &alpha,
                                 x_flat_bf16.data_ptr<at::BFloat16>(), g_cublas_cache.A_desc,
-                                phi_pre_bf16.data_ptr<at::BFloat16>(), g_cublas_cache.B_n_desc,
-                                &beta, H_pre_proj.data_ptr<float>(), g_cublas_cache.C_n_desc,
-                                H_pre_proj.data_ptr<float>(), g_cublas_cache.C_n_desc,
-                                &g_cublas_cache.heuristic_n.algo, g_cublas_cache.workspace,
+                                phi_concat_bf16.data_ptr<at::BFloat16>(),
+                                g_cublas_cache.B_concat_desc, &beta,
+                                H_proj_concat.data_ptr<float>(), g_cublas_cache.C_concat_desc,
+                                H_proj_concat.data_ptr<float>(), g_cublas_cache.C_concat_desc,
+                                &g_cublas_cache.heuristic_concat.algo, g_cublas_cache.workspace,
                                 g_cublas_cache.workspace_size, stream));
-
-    CHECK_CUBLAS(cublasLtMatmul(g_cublas_cache.handle, g_cublas_cache.matmul_desc, &alpha,
-                                x_flat_bf16.data_ptr<at::BFloat16>(), g_cublas_cache.A_desc,
-                                phi_post_bf16.data_ptr<at::BFloat16>(), g_cublas_cache.B_n_desc,
-                                &beta, H_post_proj.data_ptr<float>(), g_cublas_cache.C_n_desc,
-                                H_post_proj.data_ptr<float>(), g_cublas_cache.C_n_desc,
-                                &g_cublas_cache.heuristic_n.algo, g_cublas_cache.workspace,
-                                g_cublas_cache.workspace_size, stream));
-
-    CHECK_CUBLAS(cublasLtMatmul(g_cublas_cache.handle, g_cublas_cache.matmul_desc, &alpha,
-                                x_flat_bf16.data_ptr<at::BFloat16>(), g_cublas_cache.A_desc,
-                                phi_res_bf16.data_ptr<at::BFloat16>(), g_cublas_cache.B_nn_desc,
-                                &beta, H_res_proj.data_ptr<float>(), g_cublas_cache.C_nn_desc,
-                                H_res_proj.data_ptr<float>(), g_cublas_cache.C_nn_desc,
-                                &g_cublas_cache.heuristic_nn.algo, g_cublas_cache.workspace,
-                                g_cublas_cache.workspace_size, stream));
-
-    divide_by_rms(H_pre_proj.data_ptr<float>(), rms_h.data_ptr<float>(), B, n, stream);
-    divide_by_rms(H_post_proj.data_ptr<float>(), rms_h.data_ptr<float>(), B, n, stream);
-    divide_by_rms(H_res_proj.data_ptr<float>(), rms_h.data_ptr<float>(), B, n * n, stream);
 
     auto H_pre_activated = torch::empty({B, n}, x_expanded.options().dtype(torch::kFloat32));
     auto H_post_activated = torch::empty({B, n}, x_expanded.options().dtype(torch::kFloat32));
     auto H_res_exp = torch::empty({B, n, n}, x_expanded.options().dtype(torch::kFloat32));
 
-    apply_alpha_bias_sigmoid(H_pre_activated.data_ptr<float>(), H_pre_proj.data_ptr<float>(),
-                             alpha_pre, b_pre.data_ptr<float>(), B, n, stream);
-
-    apply_alpha_bias_2sigmoid(H_post_activated.data_ptr<float>(), H_post_proj.data_ptr<float>(),
-                              alpha_post, b_post.data_ptr<float>(), B, n, stream);
-
-    apply_alpha_bias_exp(H_res_exp.data_ptr<float>(), H_res_proj.data_ptr<float>(), alpha_res,
-                         b_res.data_ptr<float>(), B, n, stream);
+    fused_h_activations(H_pre_activated.data_ptr<float>(), H_post_activated.data_ptr<float>(),
+                        H_res_exp.data_ptr<float>(), H_proj_concat.data_ptr<float>(),
+                        rms_h.data_ptr<float>(), alpha_pre, alpha_post, alpha_res,
+                        b_pre.data_ptr<float>(), b_post.data_ptr<float>(), b_res.data_ptr<float>(),
+                        B, n, stream);
 
     auto M = torch::empty({B, n, n}, x_expanded.options().dtype(torch::kFloat32));
     sinkhorn_knopp_forward_batched(M.data_ptr<float>(), H_res_exp.data_ptr<float>(), B, n,
