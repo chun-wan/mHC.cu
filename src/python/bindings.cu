@@ -169,7 +169,20 @@ struct MHCWorkspace {
     int cached_B = 0, cached_n = 0, cached_C = 0;
     size_t off_x_agg = 0, off_y_norm = 0, off_rms = 0, off_M = 0, off_H_pre = 0, off_H_post = 0;
 
+    cudaStream_t sinkhorn_stream = nullptr;
+    cudaEvent_t sinkhorn_done = nullptr;
+    bool streams_initialized = false;
+
+    void ensure_streams() {
+        if (streams_initialized)
+            return;
+        CHECK_CUDA(cudaStreamCreate(&sinkhorn_stream));
+        CHECK_CUDA(cudaEventCreate(&sinkhorn_done));
+        streams_initialized = true;
+    }
+
     void ensure_size(int B, int n, int C) {
+        ensure_streams();
         if (cached_B >= B && cached_n == n && cached_C == C && buffer)
             return;
         if (buffer)
@@ -196,6 +209,10 @@ struct MHCWorkspace {
     ~MHCWorkspace() {
         if (buffer)
             cudaFree(buffer);
+        if (sinkhorn_stream)
+            cudaStreamDestroy(sinkhorn_stream);
+        if (sinkhorn_done)
+            cudaEventDestroy(sinkhorn_done);
     }
 };
 
@@ -215,14 +232,30 @@ torch::Tensor mhc_layer_fwd_inference(torch::Tensor x_expanded, torch::Tensor rm
                              ? x_expanded.data_ptr<float>()
                              : (x_expanded = x_expanded.to(torch::kFloat32)).data_ptr<float>();
 
+    // Only pipeline for large expansion rate (n >= 16) where Sinkhorn-Knopp iteration takes long
+    // enough to benefit from overlap
+    bool use_pipeline = (n >= 16);
+
+    if (use_pipeline) {
+        sinkhorn_knopp_forward_fused_exp(g_ws.M(), nullptr, H_res.data_ptr<float>(), n, n,
+                                         sinkhorn_iters, eps, g_ws.sinkhorn_stream);
+        CHECK_CUDA(cudaEventRecord(g_ws.sinkhorn_done, g_ws.sinkhorn_stream));
+    }
+
     stream_aggregate_bf16_fused_sigmoid(g_ws.x_agg(), g_ws.H_pre(), x_ptr, H_pre.data_ptr<float>(),
                                         B, n, C, stream);
     rmsnorm_forward_with_rms(
         g_ws.y_norm(), g_ws.rms(), g_ws.x_agg(),
         reinterpret_cast<const floatX*>(rmsnorm_weight.data_ptr<at::BFloat16>()), B, C, eps,
         stream);
-    sinkhorn_knopp_forward_fused_exp(g_ws.M(), nullptr, H_res.data_ptr<float>(), n, n,
-                                     sinkhorn_iters, eps, stream);
+
+    if (use_pipeline) {
+        CHECK_CUDA(cudaStreamWaitEvent(stream, g_ws.sinkhorn_done, 0));
+    } else {
+        sinkhorn_knopp_forward_fused_exp(g_ws.M(), nullptr, H_res.data_ptr<float>(), n, n,
+                                         sinkhorn_iters, eps, stream);
+    }
+
     stream_distribute_mix_add_fused(output.data_ptr<float>(), g_ws.H_post(), x_ptr, g_ws.y_norm(),
                                     H_post.data_ptr<float>(), g_ws.M(), B, n, C, stream);
     return output;
@@ -240,6 +273,8 @@ mhc_layer_fwd(torch::Tensor x_expanded, torch::Tensor rmsnorm_weight, torch::Ten
 
     int B = x_expanded.size(0), n = x_expanded.size(1), C = x_expanded.size(2);
     cudaStream_t stream = at::cuda::getCurrentCUDAStream();
+
+    g_ws.ensure_streams();
 
     auto opts = x_expanded.options();
     auto output = torch::empty({B, n, C}, opts.dtype(torch::kFloat32));
@@ -259,6 +294,14 @@ mhc_layer_fwd(torch::Tensor x_expanded, torch::Tensor rmsnorm_weight, torch::Ten
         x_ptr = x_holder.data_ptr<float>();
     }
 
+    bool use_pipeline = (n >= 16);
+
+    if (use_pipeline) {
+        sinkhorn_knopp_forward_fused_exp(M.data_ptr<float>(), nullptr, H_res.data_ptr<float>(), n,
+                                         n, sinkhorn_iters, eps, g_ws.sinkhorn_stream);
+        CHECK_CUDA(cudaEventRecord(g_ws.sinkhorn_done, g_ws.sinkhorn_stream));
+    }
+
     stream_aggregate_bf16_fused_sigmoid(
         reinterpret_cast<floatX*>(x_agg_bf16.data_ptr<at::BFloat16>()),
         H_pre_activated.data_ptr<float>(), x_ptr, H_pre.data_ptr<float>(), B, n, C, stream);
@@ -269,8 +312,12 @@ mhc_layer_fwd(torch::Tensor x_expanded, torch::Tensor rmsnorm_weight, torch::Ten
         reinterpret_cast<const floatX*>(rmsnorm_weight.data_ptr<at::BFloat16>()), B, C, eps,
         stream);
 
-    sinkhorn_knopp_forward_fused_exp(M.data_ptr<float>(), nullptr, H_res.data_ptr<float>(), n, n,
-                                     sinkhorn_iters, eps, stream);
+    if (use_pipeline) {
+        CHECK_CUDA(cudaStreamWaitEvent(stream, g_ws.sinkhorn_done, 0));
+    } else {
+        sinkhorn_knopp_forward_fused_exp(M.data_ptr<float>(), nullptr, H_res.data_ptr<float>(), n,
+                                         n, sinkhorn_iters, eps, stream);
+    }
 
     stream_distribute_mix_add_fused(
         output.data_ptr<float>(), H_post_activated.data_ptr<float>(), x_ptr,

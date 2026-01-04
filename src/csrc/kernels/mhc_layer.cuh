@@ -456,7 +456,9 @@ struct MHCLayer {
 
         use_tc_mix = (n >= STREAM_MIX_TC_THRESHOLD);
         backward_enabled = enable_backward;
-        use_pipelining = enable_pipelining;
+        // Only use pipelining for large expansion rate (n >= 16) where Sinkhorn-Knopp iteration
+        // takes long enough to benefit from overlap
+        use_pipelining = enable_pipelining && (n >= 16);
 
         weights.init(C, n, cfg.use_dynamic_h, cfg.alpha_init);
         buffers.init(B, C, n, use_tc_mix || backward_enabled, cfg.use_dynamic_h);
