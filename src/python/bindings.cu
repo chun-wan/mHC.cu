@@ -480,7 +480,7 @@ mhc_layer_fwd_dynamic(torch::Tensor x_expanded, torch::Tensor rmsnorm_weight,
             y_norm_bf16, x_flat_bf16, rms_h};
 }
 
-std::tuple<torch::Tensor, torch::Tensor>
+std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>
 mhc_layer_bwd_dynamic(torch::Tensor grad_output, torch::Tensor x_expanded,
                       torch::Tensor rmsnorm_weight, torch::Tensor rms, torch::Tensor x_agg_bf16,
                       torch::Tensor H_pre_activated, torch::Tensor H_post_activated,
@@ -538,7 +538,7 @@ mhc_layer_bwd_dynamic(torch::Tensor grad_output, torch::Tensor x_expanded,
 
     auto d_x_expanded = d_x_mix + d_x_from_agg;
 
-    return {d_x_expanded, d_rmsnorm_weight};
+    return {d_x_expanded, d_rmsnorm_weight, d_H_pre, d_H_post, d_M};
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
