@@ -1,8 +1,17 @@
 # mHC.cu
 
-unofficial CUDA implementation of mHC: Manifold-Constrained Hyper-Connections by DeepSeek-AI
+Unofficial CUDA/HIP implementation of mHC: Manifold-Constrained Hyper-Connections by DeepSeek-AI
 
-## Running on Modal
+**Supports both NVIDIA (CUDA) and AMD (ROCm/HIP) GPUs**
+
+## Supported Platforms
+
+| Platform | GPUs | Status |
+|----------|------|--------|
+| NVIDIA CUDA | H100, B200, A100 | ✅ Full support |
+| AMD ROCm/HIP | MI300X, MI300A, MI250X | ✅ Full support |
+
+## Running on Modal (NVIDIA)
 
 Once the image builds the first time, it will be cached and will not require a rebuild.
 
@@ -69,6 +78,90 @@ make test-python  # Python tests
 make bench        # run all C++ / CUDA benchmarks
 make bench-python # run all Python benchmarks
 ```
+
+---
+
+## AMD ROCm/HIP (MI300X)
+
+Full HIP/ROCm support for AMD Instinct GPUs with [AITER](https://github.com/ROCm/aiter) integration.
+
+### Requirements
+
+- ROCm 6.0+ (tested with ROCm 7.2)
+- AMD MI300X/MI300A/MI250X GPU
+- PyTorch 2.0+ with ROCm support
+
+### Installation
+
+```bash
+# Install PyTorch extension for AMD
+pip install -e . --config-settings="setup-file=setup_hip.py"
+
+# Or use the HIP Makefile
+make -f Makefile.hip install
+```
+
+### Build
+
+```bash
+make -f Makefile.hip                    # build for MI300X (default)
+make -f Makefile.hip HIP_ARCH=gfx90a    # build for MI250X
+make -f Makefile.hip clean              # clean build
+```
+
+### Build Script
+
+```bash
+./scripts/build_hip.sh --install        # build and install
+./scripts/build_hip.sh --test           # run tests
+./scripts/build_hip.sh --bench          # run benchmarks
+```
+
+### AMD Benchmark Results (MI300X)
+
+#### SuperFused Implementation (Best Performance)
+
+| Batch | Hidden | n  | Non-Fused | SuperFused | Speedup |
+|-------|--------|----|-----------|------------|---------|
+| 128   | 1280   | 4  | 0.534ms   | 0.240ms    | **2.22x** |
+| 256   | 1280   | 4  | 0.442ms   | 0.244ms    | **1.81x** |
+| 512   | 1920   | 4  | 1.014ms   | 0.383ms    | **2.65x** |
+| 512   | 2560   | 4  | 1.308ms   | 0.471ms    | **2.77x** |
+| 1024  | 1920   | 4  | 1.871ms   | 0.692ms    | **2.70x** |
+
+#### AITER RMSNorm (Isolated)
+
+| Size | PyTorch | AITER | Speedup |
+|------|---------|-------|---------|
+| (256, 1280) | 0.038ms | 0.010ms | **3.94x** |
+| (512, 1920) | 0.044ms | 0.009ms | **4.70x** |
+| (1024, 2560) | 0.060ms | 0.010ms | **6.08x** |
+
+### AMD Usage
+
+```python
+import torch
+from mhc_aiter import MHCLayerSuperFused  # 2.35x faster
+
+# SuperFused implementation (recommended)
+layer = MHCLayerSuperFused(hidden_dim=1280, n_streams=4).cuda()
+x = torch.randn(256, 4, 1280, device="cuda")
+y = layer(x)
+
+# Or with AITER acceleration
+from mhc_aiter import MHCLayerAITER
+layer_aiter = MHCLayerAITER(hidden_dim=1280, n_streams=4, use_aiter=True).cuda()
+y = layer_aiter(x)
+```
+
+### AMD Documentation
+
+- [README_HIP.md](README_HIP.md) - Full HIP/ROCm documentation
+- [docs/AITER_INTEGRATION.md](docs/AITER_INTEGRATION.md) - AITER integration guide
+- [docs/BENCHMARK_RESULTS.md](docs/BENCHMARK_RESULTS.md) - Detailed benchmarks
+- [docs/FUSED_OPS_RESULTS.md](docs/FUSED_OPS_RESULTS.md) - Fusion optimization results
+
+---
 
 ### Pytorch Benchmark Results (benchmarked on H100 SXM5)
 
