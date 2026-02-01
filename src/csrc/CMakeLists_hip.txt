@@ -1,0 +1,82 @@
+# CMakeLists.txt for HIP/ROCm build (AMD MI300X)
+cmake_minimum_required(VERSION 3.21)
+project(mHC_HIP LANGUAGES CXX HIP)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_HIP_STANDARD 17)
+
+# Find ROCm packages
+find_package(hip REQUIRED)
+find_package(hipblas REQUIRED)
+find_package(rocblas REQUIRED)
+
+# Default to MI300X architecture (gfx942)
+if(NOT DEFINED ROCM_ARCH)
+    set(ROCM_ARCH "gfx942")  # MI300X
+endif()
+
+# Set HIP architecture flags
+set(CMAKE_HIP_ARCHITECTURES ${ROCM_ARCH})
+
+add_library(mhc_kernels_hip INTERFACE)
+target_include_directories(mhc_kernels_hip INTERFACE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernels
+)
+target_link_libraries(mhc_kernels_hip INTERFACE
+    hip::device
+    roc::hipblas
+    roc::rocblas
+)
+
+# Compiler flags for HIP
+set(HIP_COMPILE_FLAGS
+    -std=c++17
+    -ffast-math
+    -O3
+    -D__HIP_PLATFORM_AMD__
+)
+
+function(add_mhc_hip_executable name source)
+    add_executable(${name} ${source})
+    target_link_libraries(${name} PRIVATE mhc_kernels_hip)
+    target_compile_options(${name} PRIVATE
+        $<$<COMPILE_LANGUAGE:HIP>:${HIP_COMPILE_FLAGS}>
+    )
+    set_target_properties(${name} PROPERTIES
+        HIP_ARCHITECTURES ${ROCM_ARCH}
+    )
+endfunction()
+
+# Tests
+set(TESTS_HIP
+    test_rmsnorm_hip
+    test_sinkhorn_knopp_hip
+    test_stream_ops_hip
+    test_mhc_layer_hip
+)
+
+# Benchmarks
+set(BENCHMARKS_HIP
+    bench_rmsnorm_hip
+    bench_sinkhorn_knopp_hip
+    bench_mhc_layer_hip
+)
+
+foreach(test ${TESTS_HIP})
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/${test}.cpp")
+        add_mhc_hip_executable(${test} tests/${test}.cpp)
+    endif()
+endforeach()
+
+foreach(bench ${BENCHMARKS_HIP})
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/benchmarks/${bench}.cpp")
+        add_mhc_hip_executable(${bench} benchmarks/${bench}.cpp)
+    endif()
+endforeach()
+
+# Print configuration
+message(STATUS "Building mHC.cu for AMD MI300X (ROCm/HIP)")
+message(STATUS "  ROCm Architecture: ${ROCM_ARCH}")
+message(STATUS "  HIP Version: ${hip_VERSION}")
+

@@ -1,0 +1,220 @@
+{
+  "metadata": {
+    "timestamp": "2026-02-01T14:52:00.746352",
+    "device": "AMD Instinct MI308X",
+    "pytorch_version": "2.9.1+rocm7.2.0.git89075173",
+    "aiter_available": true
+  },
+  "benchmarks": [
+    {
+      "batch_size": 128,
+      "n_streams": 4,
+      "hidden_dim": 1280,
+      "results": {
+        "pytorch_f32": {
+          "forward_ms": 0.530078,
+          "backward_ms": 1.258308,
+          "total_ms": 1.788387,
+          "memory_mb": 6.251953
+        },
+        "pytorch_bf16": {
+          "forward_ms": 0.550973,
+          "backward_ms": 1.380883,
+          "total_ms": 1.931856,
+          "memory_mb": 6.251953
+        },
+        "aiter_bf16": {
+          "forward_ms": 0.514654,
+          "backward_ms": 1.079976,
+          "total_ms": 1.594629,
+          "memory_mb": 6.251465
+        }
+      },
+      "correctness": {
+        "max_diff": 0.024695,
+        "mean_diff": 0.001472,
+        "relative_diff": 0.002526
+      }
+    },
+    {
+      "batch_size": 256,
+      "n_streams": 4,
+      "hidden_dim": 1280,
+      "results": {
+        "pytorch_f32": {
+          "forward_ms": 0.438261,
+          "backward_ms": 1.257825,
+          "total_ms": 1.696087,
+          "memory_mb": 12.502441
+        },
+        "pytorch_bf16": {
+          "forward_ms": 0.462895,
+          "backward_ms": 1.38712,
+          "total_ms": 1.850015,
+          "memory_mb": 12.502441
+        },
+        "aiter_bf16": {
+          "forward_ms": 0.423792,
+          "backward_ms": 1.090211,
+          "total_ms": 1.514003,
+          "memory_mb": 12.501465
+        }
+      },
+      "correctness": {
+        "max_diff": 0.029177,
+        "mean_diff": 0.001497,
+        "relative_diff": 0.003339
+      }
+    },
+    {
+      "batch_size": 320,
+      "n_streams": 4,
+      "hidden_dim": 1280,
+      "results": {
+        "pytorch_f32": {
+          "forward_ms": 0.514489,
+          "backward_ms": 1.270565,
+          "total_ms": 1.785054,
+          "memory_mb": 15.62793
+        },
+        "pytorch_bf16": {
+          "forward_ms": 0.539673,
+          "backward_ms": 1.389078,
+          "total_ms": 1.928751,
+          "memory_mb": 15.62793
+        },
+        "aiter_bf16": {
+          "forward_ms": 0.499148,
+          "backward_ms": 1.094634,
+          "total_ms": 1.593783,
+          "memory_mb": 15.626465
+        }
+      },
+      "correctness": {
+        "max_diff": 0.020732,
+        "mean_diff": 0.001518,
+        "relative_diff": 0.003269
+      }
+    },
+    {
+      "batch_size": 512,
+      "n_streams": 4,
+      "hidden_dim": 1920,
+      "results": {
+        "pytorch_f32": {
+          "forward_ms": 0.990385,
+          "backward_ms": 2.308731,
+          "total_ms": 3.299116,
+          "memory_mb": 37.503418
+        },
+        "pytorch_bf16": {
+          "forward_ms": 1.027813,
+          "backward_ms": 2.355432,
+          "total_ms": 3.383246,
+          "memory_mb": 38.503418
+        },
+        "aiter_bf16": {
+          "forward_ms": 0.963197,
+          "backward_ms": 1.83346,
+          "total_ms": 2.796657,
+          "memory_mb": 38.501465
+        }
+      },
+      "correctness": {
+        "max_diff": 0.023165,
+        "mean_diff": 0.001496,
+        "relative_diff": 0.0028
+      }
+    },
+    {
+      "batch_size": 512,
+      "n_streams": 4,
+      "hidden_dim": 2560,
+      "results": {
+        "pytorch_f32": {
+          "forward_ms": 1.278411,
+          "backward_ms": 2.911306,
+          "total_ms": 4.189717,
+          "memory_mb": 50.003418
+        },
+        "pytorch_bf16": {
+          "forward_ms": 1.322034,
+          "backward_ms": 2.966495,
+          "total_ms": 4.288528,
+          "memory_mb": 50.003418
+        },
+        "aiter_bf16": {
+          "forward_ms": 1.252007,
+          "backward_ms": 2.333005,
+          "total_ms": 3.585012,
+          "memory_mb": 50.001465
+        }
+      },
+      "correctness": {
+        "max_diff": 0.024076,
+        "mean_diff": 0.00149,
+        "relative_diff": 0.003031
+      }
+    },
+    {
+      "batch_size": 1024,
+      "n_streams": 4,
+      "hidden_dim": 1280,
+      "results": {
+        "pytorch_f32": {
+          "forward_ms": 1.275571,
+          "backward_ms": 2.908179,
+          "total_ms": 4.183749,
+          "memory_mb": 50.005371
+        },
+        "pytorch_bf16": {
+          "forward_ms": 1.319595,
+          "backward_ms": 2.96262,
+          "total_ms": 4.282215,
+          "memory_mb": 50.005371
+        },
+        "aiter_bf16": {
+          "forward_ms": 1.249212,
+          "backward_ms": 2.328964,
+          "total_ms": 3.578176,
+          "memory_mb": 50.001465
+        }
+      },
+      "correctness": {
+        "max_diff": 0.030527,
+        "mean_diff": 0.001503,
+        "relative_diff": 0.002854
+      }
+    },
+    {
+      "batch_size": 1024,
+      "n_streams": 4,
+      "hidden_dim": 1920,
+      "results": {
+        "pytorch_f32": {
+          "forward_ms": 1.828802,
+          "backward_ms": 4.112824,
+          "total_ms": 5.941626,
+          "memory_mb": 75.005371
+        },
+        "pytorch_bf16": {
+          "forward_ms": 1.881424,
+          "backward_ms": 4.17828,
+          "total_ms": 6.059704,
+          "memory_mb": 75.005371
+        },
+        "aiter_bf16": {
+          "forward_ms": 1.80391,
+          "backward_ms": 3.305301,
+          "total_ms": 5.109211,
+          "memory_mb": 75.001465
+        }
+      },
+      "correctness": {
+        "max_diff": 0.026219,
+        "mean_diff": 0.001508,
+        "relative_diff": 0.002885
+      }
+    }
+  ]
+}
