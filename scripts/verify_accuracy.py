@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-mHC HIP 精度驗證腳本
-比較 HIP Kernel 與 PyTorch 參考實現的數值精度
+mHC HIP Accuracy Verification Script
+Compare HIP kernels against PyTorch reference implementations
 """
 
 import sys
@@ -18,8 +18,8 @@ try:
     import mhc_hip
     HIP_AVAILABLE = True
 except ImportError as e:
-    print(f"⚠️  mhc_hip 模組未載入: {e}")
-    print("請確保已設定 LD_LIBRARY_PATH")
+    print(f"Warning: mhc_hip module not loaded: {e}")
+    print("Please ensure LD_LIBRARY_PATH is set")
     HIP_AVAILABLE = False
 
 def print_header(title):
@@ -76,11 +76,11 @@ def mhc_forward_pytorch(x, H_pre, H_post, H_res, rmsnorm_weight, sinkhorn_iters=
 # ============================================================================
 
 def verify_rmsnorm():
-    """驗證 RMSNorm 精度"""
-    print_header("RMSNorm 精度驗證")
+    """Verify RMSNorm accuracy"""
+    print_header("RMSNorm Accuracy Verification")
     
     if not HIP_AVAILABLE:
-        print("  跳過 (mhc_hip 不可用)")
+        print("  Skipped (mhc_hip not available)")
         return True
     
     test_configs = [
@@ -118,11 +118,11 @@ def verify_rmsnorm():
     return all_passed
 
 def verify_sinkhorn_knopp():
-    """驗證 Sinkhorn-Knopp 精度"""
-    print_header("Sinkhorn-Knopp 精度驗證")
+    """Verify Sinkhorn-Knopp accuracy"""
+    print_header("Sinkhorn-Knopp Accuracy Verification")
     
     if not HIP_AVAILABLE:
-        print("  跳過 (mhc_hip 不可用)")
+        print("  Skipped (mhc_hip not available)")
         return True
     
     test_configs = [
@@ -162,20 +162,20 @@ def verify_sinkhorn_knopp():
         
         ds_passed = row_err < 0.01 and col_err < 0.01
         all_passed = all_passed and ds_passed
-        print(f"    雙隨機性: row_err={row_err:.2e}, col_err={col_err:.2e} {'✅' if ds_passed else '❌'}")
+        print(f"    Doubly stochastic: row_err={row_err:.2e}, col_err={col_err:.2e} {'PASS' if ds_passed else 'FAIL'}")
     
     return all_passed
 
 def verify_mhc_layer():
-    """驗證完整 mHC Layer 精度"""
-    print_header("mHC Layer 完整精度驗證")
+    """Verify full mHC Layer accuracy"""
+    print_header("mHC Layer Full Accuracy Verification")
     
     # Import mhc_aiter
     try:
         from mhc_aiter import MHCLayerSuperFused, MHCLayer
         LAYER_AVAILABLE = True
     except ImportError as e:
-        print(f"  跳過 (無法導入 mhc_aiter: {e})")
+        print(f"  Skipped (cannot import mhc_aiter: {e})")
         return True
     
     test_configs = [
@@ -222,11 +222,11 @@ def verify_mhc_layer():
     return all_passed
 
 def verify_backward():
-    """驗證反向傳播精度"""
-    print_header("反向傳播精度驗證")
+    """Verify backward pass accuracy"""
+    print_header("Backward Pass Accuracy Verification")
     
     if not HIP_AVAILABLE:
-        print("  跳過 (mhc_hip 不可用)")
+        print("  Skipped (mhc_hip not available)")
         return True
     
     # RMSNorm backward
@@ -269,17 +269,17 @@ def verify_backward():
     return dx_passed and dw_passed
 
 def verify_numerical_stability():
-    """驗證數值穩定性"""
-    print_header("數值穩定性驗證")
+    """Verify numerical stability"""
+    print_header("Numerical Stability Verification")
     
     if not HIP_AVAILABLE:
-        print("  跳過 (mhc_hip 不可用)")
+        print("  Skipped (mhc_hip not available)")
         return True
     
     all_passed = True
     
     # Test with extreme values
-    print("\n  極端值測試:")
+    print("\n  Extreme Value Tests:")
     
     # Very small values
     x_small = torch.randn(32, 256, device='cuda', dtype=torch.bfloat16) * 1e-4
@@ -290,7 +290,7 @@ def verify_numerical_stability():
     has_inf = torch.isinf(out).any().item() or torch.isinf(rms).any().item()
     small_passed = not has_nan and not has_inf
     all_passed = all_passed and small_passed
-    print(f"    小數值 (1e-4): {'✅ PASSED' if small_passed else '❌ FAILED (NaN/Inf)'}")
+    print(f"    Small values (1e-4): {'PASSED' if small_passed else 'FAILED (NaN/Inf)'}")
     
     # Very large values
     x_large = torch.randn(32, 256, device='cuda', dtype=torch.bfloat16) * 1e3
@@ -300,10 +300,10 @@ def verify_numerical_stability():
     has_inf = torch.isinf(out).any().item() or torch.isinf(rms).any().item()
     large_passed = not has_nan and not has_inf
     all_passed = all_passed and large_passed
-    print(f"    大數值 (1e3): {'✅ PASSED' if large_passed else '❌ FAILED (NaN/Inf)'}")
+    print(f"    Large values (1e3): {'PASSED' if large_passed else 'FAILED (NaN/Inf)'}")
     
     # Mixed precision consistency
-    print("\n  混合精度一致性:")
+    print("\n  Mixed Precision Consistency:")
     x_f32 = torch.randn(32, 256, device='cuda', dtype=torch.float32)
     x_bf16 = x_f32.to(torch.bfloat16)
     weight_f32 = torch.ones(256, device='cuda', dtype=torch.float32)
@@ -315,7 +315,7 @@ def verify_numerical_stability():
     diff = (out_bf16.float() - out_ref.float()).abs().max().item()
     precision_passed = diff < 1e-3
     all_passed = all_passed and precision_passed
-    print(f"    BF16 一致性: max_diff={diff:.2e} {'✅ PASSED' if precision_passed else '❌ FAILED'}")
+    print(f"    BF16 consistency: max_diff={diff:.2e} {'PASSED' if precision_passed else 'FAILED'}")
     
     return all_passed
 
@@ -325,11 +325,11 @@ def verify_numerical_stability():
 
 def main():
     print("=" * 60)
-    print(" mHC HIP 精度驗證")
+    print(" mHC HIP Accuracy Verification")
     print("=" * 60)
-    print(f"\n設備: {torch.cuda.get_device_name(0)}")
+    print(f"\nDevice: {torch.cuda.get_device_name(0)}")
     print(f"PyTorch: {torch.__version__}")
-    print(f"HIP Kernel: {'可用' if HIP_AVAILABLE else '不可用'}")
+    print(f"HIP Kernel: {'Available' if HIP_AVAILABLE else 'Not Available'}")
     
     results = {}
     
@@ -341,19 +341,19 @@ def main():
     results['Numerical Stability'] = verify_numerical_stability()
     
     # Summary
-    print_header("驗證結果總結")
+    print_header("Verification Summary")
     
     all_passed = True
     for name, passed in results.items():
-        status = "✅ PASSED" if passed else "❌ FAILED"
+        status = "PASSED" if passed else "FAILED"
         print(f"  {name}: {status}")
         all_passed = all_passed and passed
     
     print("\n" + "=" * 60)
     if all_passed:
-        print(" 🎉 所有精度驗證通過！")
+        print(" All accuracy verifications passed!")
     else:
-        print(" ⚠️  部分驗證失敗，請檢查上述結果")
+        print(" Some verifications failed, please check results above")
     print("=" * 60)
     
     return 0 if all_passed else 1
