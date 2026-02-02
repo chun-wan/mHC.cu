@@ -22,18 +22,26 @@ def _try_import_aiter():
     global _AITER_AVAILABLE, _AITER_RMSNORM, _AITER_GEMM, _AITER_SIGMOID
     
     try:
-        # Import AITER's optimized RMSNorm
-        from aiter import rmsnorm_fwd as aiter_rmsnorm_fwd
-        from aiter import rmsnorm_bwd as aiter_rmsnorm_bwd
-        _AITER_RMSNORM = (aiter_rmsnorm_fwd, aiter_rmsnorm_bwd)
+        # Import AITER's optimized RMSNorm (API names differ between versions)
+        try:
+            from aiter import rms_norm as aiter_rmsnorm_fwd
+        except ImportError:
+            from aiter import rmsnorm2d_fwd as aiter_rmsnorm_fwd
+        _AITER_RMSNORM = (aiter_rmsnorm_fwd, None)  # No backward in AITER for rms_norm
         
         # Import AITER's optimized GEMM
-        from aiter import gemm as aiter_gemm
-        _AITER_GEMM = aiter_gemm
+        try:
+            from aiter import gemm as aiter_gemm
+            _AITER_GEMM = aiter_gemm
+        except ImportError:
+            _AITER_GEMM = None
         
         # Import AITER's optimized sigmoid
-        from aiter import sigmoid as aiter_sigmoid
-        _AITER_SIGMOID = aiter_sigmoid
+        try:
+            from aiter import sigmoid as aiter_sigmoid
+            _AITER_SIGMOID = aiter_sigmoid
+        except ImportError:
+            _AITER_SIGMOID = None
         
         _AITER_AVAILABLE = True
         print("[mHC] AITER operators loaded successfully")

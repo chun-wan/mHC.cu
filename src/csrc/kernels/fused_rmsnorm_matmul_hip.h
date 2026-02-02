@@ -6,6 +6,7 @@
 #include <hipblaslt/hipblaslt.h>
 
 #include "../include/mhc_types_hip.h"
+#include "../include/utils_hip.h"
 
 namespace cg = cooperative_groups;
 
@@ -35,7 +36,7 @@ __global__ void compute_rms_kernel(float* __restrict__ rms_out, const floatX* __
         thread_sum_sq += val * val;
     }
 
-    float warp_sum = cg::reduce(warp, thread_sum_sq, cg::plus<float>());
+    float warp_sum = tile_reduce_sum(warp, thread_sum_sq);
 
     int warp_id = threadIdx.x / 64;
     int lane_id = threadIdx.x % 64;
@@ -48,7 +49,7 @@ __global__ void compute_rms_kernel(float* __restrict__ rms_out, const floatX* __
 
     if (warp_id == 0) {
         float val = (lane_id < num_warps) ? shared[lane_id] : 0.0f;
-        float block_sum = cg::reduce(warp, val, cg::plus<float>());
+        float block_sum = tile_reduce_sum(warp, val);
 
         if (lane_id == 0) {
             float rms = sqrtf(block_sum / (float)C + eps);
@@ -97,7 +98,7 @@ __global__ void compute_rms_kernel_vectorized(float* __restrict__ rms_out,
         thread_sum_sq += val * val;
     }
 
-    float warp_sum = cg::reduce(warp, thread_sum_sq, cg::plus<float>());
+    float warp_sum = tile_reduce_sum(warp, thread_sum_sq);
 
     int warp_id = threadIdx.x / 64;
     int lane_id = threadIdx.x % 64;
@@ -110,7 +111,7 @@ __global__ void compute_rms_kernel_vectorized(float* __restrict__ rms_out,
 
     if (warp_id == 0) {
         float val = (lane_id < num_warps) ? shared[lane_id] : 0.0f;
-        float block_sum = cg::reduce(warp, val, cg::plus<float>());
+        float block_sum = tile_reduce_sum(warp, val);
 
         if (lane_id == 0) {
             float rms = sqrtf(block_sum / (float)C + eps);
@@ -374,7 +375,7 @@ __global__ void rms_correction_kernel(float* __restrict__ dx, const float* __res
         thread_dot += K_row[i] * xi;
     }
 
-    float warp_dot = cg::reduce(warp, thread_dot, cg::plus<float>());
+    float warp_dot = tile_reduce_sum(warp, thread_dot);
     if (lane_id == 0) {
         shared[warp_id] = warp_dot;
     }
@@ -383,7 +384,7 @@ __global__ void rms_correction_kernel(float* __restrict__ dx, const float* __res
     float K_dot_x = 0.0f;
     if (warp_id == 0) {
         float val = (lane_id < num_warps) ? shared[lane_id] : 0.0f;
-        K_dot_x = cg::reduce(warp, val, cg::plus<float>());
+        K_dot_x = tile_reduce_sum(warp, val);
         if (lane_id == 0) {
             shared[0] = K_dot_x;
         }

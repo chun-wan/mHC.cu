@@ -324,7 +324,7 @@ __global__ void stream_aggregate_backward_dH_partial_kernel(float* __restrict__ 
     #pragma unroll
     for (int i = 0; i < MAX_N; i++) {
         if (i < n) {
-            float warp_sum = cg::reduce(warp, local_sum[i], cg::plus<float>());
+            float warp_sum = tile_reduce_sum(warp, local_sum[i]);
             if (warp.thread_rank() == 0)
                 s_warp_sums[i][warp_id] = warp_sum;
         }
@@ -351,7 +351,7 @@ __global__ void reduce_partials_kernel(float* __restrict__ out, const float* __r
     float sum = 0.0f;
     for (int p = threadIdx.x; p < num_partials; p += blockDim.x)
         sum += partials[p * n + i];
-    sum = cg::reduce(warp, sum, cg::plus<float>());
+    sum = tile_reduce_sum(warp, sum);
 
     __shared__ float s_warp_sums[8];
     if (warp.thread_rank() == 0)
@@ -478,7 +478,7 @@ __global__ void stream_distribute_mix_backward_partials_kernel(
             #pragma unroll
             for (int j = 0; j < MAX_N; j++) {
                 if (j < n) {
-                    float ws = cg::reduce(warp, local_M[i][j], cg::plus<float>());
+                    float ws = tile_reduce_sum(warp, local_M[i][j]);
                     if (warp.thread_rank() == 0)
                         s_warp_M[i][j][warp_id] = ws;
                 }
@@ -488,7 +488,7 @@ __global__ void stream_distribute_mix_backward_partials_kernel(
     #pragma unroll
     for (int i = 0; i < MAX_N; i++) {
         if (i < n) {
-            float ws = cg::reduce(warp, local_H[i], cg::plus<float>());
+            float ws = tile_reduce_sum(warp, local_H[i]);
             if (warp.thread_rank() == 0)
                 s_warp_H[i][warp_id] = ws;
         }
@@ -523,7 +523,7 @@ __global__ void reduce_partials_matrix_kernel(float* __restrict__ out,
     float sum = 0.0f;
     for (int p = threadIdx.x; p < num_partials; p += blockDim.x)
         sum += partials[p * n * n + k];
-    sum = cg::reduce(warp, sum, cg::plus<float>());
+    sum = tile_reduce_sum(warp, sum);
 
     __shared__ float s_warp_sums[8];
     if (warp.thread_rank() == 0)

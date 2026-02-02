@@ -39,7 +39,7 @@ __global__ void sinkhorn_knopp_warp_optimized_kernel(float* __restrict__ out,
     for (int iter = 0; iter < num_iters; iter++) {
         for (int r = warp_id; r < M; r += WARPS_PER_BLOCK) {
             float val = (lane_id < N) ? tile[r * N + lane_id] : 0.0f;
-            float row_sum = cg::reduce(warp, val, cg::plus<float>());
+            float row_sum = tile_reduce_sum(warp, val);
 
             if (lane_id < N && row_sum > eps) {
                 tile[r * N + lane_id] = val / row_sum;
@@ -100,7 +100,7 @@ __global__ void sinkhorn_knopp_warp_per_row_32x32_kernel(float* __restrict__ out
             int r = warp_id * ROWS_PER_WARP + rr;
             if (r < N) {
                 float val = (lane_id < N) ? tile[r * stride + lane_id] : 0.0f;
-                float sum = cg::reduce(warp, val, cg::plus<float>());
+                float sum = tile_reduce_sum(warp, val);
 
                 if (sum > eps && lane_id < N) {
                     tile[r * stride + lane_id] = val / sum;

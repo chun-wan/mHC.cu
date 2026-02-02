@@ -62,6 +62,37 @@ __device__ __forceinline__ float fast_rcp(float x) {
 }
 
 // ============================================================================
+// Warp Reduction Utilities (HIP doesn't have cg::reduce)
+// ============================================================================
+
+// Warp reduce sum for AMD GPUs (wavefront = 64)
+template<int WARP_SIZE = 64>
+__device__ __forceinline__ float warp_reduce_sum(float val) {
+    #pragma unroll
+    for (int offset = WARP_SIZE / 2; offset > 0; offset /= 2) {
+        val += __shfl_down(val, offset, WARP_SIZE);
+    }
+    return val;
+}
+
+// Warp reduce sum for tile (cooperative group replacement)
+template<typename TileT>
+__device__ __forceinline__ float tile_reduce_sum(TileT tile, float val) {
+    int tile_size = tile.size();
+    #pragma unroll
+    for (int offset = tile_size / 2; offset > 0; offset /= 2) {
+        val += tile.shfl_down(val, offset);
+    }
+    return val;
+}
+
+// Plus functor for compatibility (replaces cg::plus<T>)
+template<typename T>
+struct plus_op {
+    __device__ __forceinline__ T operator()(T a, T b) const { return a + b; }
+};
+
+// ============================================================================
 // Fused H Activations Kernel
 // ============================================================================
 

@@ -20,7 +20,7 @@ from setuptools import setup, find_packages
 os.environ['HIP_PLATFORM'] = 'amd'
 os.environ.setdefault('ROCM_PATH', '/opt/rocm')
 
-from torch.utils.cpp_extension import BuildExtension, CppExtension
+from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 
 # Check for AITER availability
 def check_aiter_available():
@@ -103,11 +103,23 @@ if not USE_AITER and check_aiter_available():
     print("[mHC Setup] Use --no-aiter to disable")
     USE_AITER = True
 
-# Extra compile args for CXX (no HIP-specific flags here)
+# Get target GPU architecture
+HIP_ARCH = os.environ.get('HIP_ARCH', 'gfx942')  # MI300X default
+
+# Extra compile args for CXX
 cxx_compile_args = [
     '-std=c++17',
     '-O3',
     '-ffast-math',
+    '-D__HIP_PLATFORM_AMD__',
+    '-DUSE_ROCM',
+]
+
+# HIP/NVCC compile args (these go to hipcc)
+hip_compile_args = [
+    '-std=c++17',
+    '-O3',
+    f'--offload-arch={HIP_ARCH}',
     '-D__HIP_PLATFORM_AMD__',
     '-DUSE_ROCM',
     '-U__CUDA_NO_HALF_OPERATORS__',
@@ -118,6 +130,7 @@ cxx_compile_args = [
 # Add AITER flag if enabled
 if USE_AITER:
     cxx_compile_args.append('-DMHC_USE_AITER')
+    hip_compile_args.append('-DMHC_USE_AITER')
     print("[mHC Setup] Building with AITER support")
 else:
     print("[mHC Setup] Building without AITER support")
@@ -130,9 +143,8 @@ hip_libraries = [
     'rocblas',
 ]
 
-# Add AITER library if enabled
-if USE_AITER:
-    hip_libraries.append('aiter')
+# Note: AITER is a Python package, not a C++ library, so we don't link against it
+# AITER operators are used through Python bindings, not C++ linking
 
 # Define macros
 define_macros = [
@@ -161,14 +173,15 @@ setup(
     package_dir={'': 'src/python'},
     py_modules=py_modules,
     ext_modules=[
-        CppExtension(
+        CUDAExtension(
             name='mhc_hip',
-            sources=['src/python/bindings_hip.cpp'],
+            sources=['src/python/bindings_hip.cu'],
             include_dirs=get_hip_include_dirs(),
             library_dirs=get_hip_library_dirs(),
             libraries=hip_libraries,
             extra_compile_args={
                 'cxx': cxx_compile_args,
+                'nvcc': hip_compile_args,  # For ROCm, 'nvcc' maps to hipcc
             },
             define_macros=define_macros,
         )

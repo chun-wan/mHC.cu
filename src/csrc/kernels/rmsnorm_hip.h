@@ -4,6 +4,7 @@
 #include <hip/hip_bfloat16.h>
 #include <hip/hip_cooperative_groups.h>
 #include "../include/mhc_types_hip.h"
+#include "../include/utils_hip.h"
 
 namespace cg = cooperative_groups;
 
@@ -37,7 +38,7 @@ __global__ void rmsnorm_kernel(floatX* __restrict__ out, float* __restrict__ rms
     }
 
     // Warp reduction using cooperative groups
-    float warp_sum = cg::reduce(warp, thread_sum_sq, cg::plus<float>());
+    float warp_sum = tile_reduce_sum(warp, thread_sum_sq);
 
     int warp_id = threadIdx.x / 64;  // AMD wavefront size = 64
     int lane_id = threadIdx.x % 64;
@@ -50,7 +51,7 @@ __global__ void rmsnorm_kernel(floatX* __restrict__ out, float* __restrict__ rms
 
     if (warp_id == 0) {
         float val = (lane_id < num_warps) ? s_sum_sq[lane_id] : 0.0f;
-        float block_sum = cg::reduce(warp, val, cg::plus<float>());
+        float block_sum = tile_reduce_sum(warp, val);
 
         if (lane_id == 0) {
             float rms = sqrtf(block_sum / (float)C + eps);
@@ -116,7 +117,7 @@ __global__ void rmsnorm_kernel_vectorized(floatX* __restrict__ out, float* __res
         thread_sum_sq += val * val;
     }
 
-    float warp_sum = cg::reduce(warp, thread_sum_sq, cg::plus<float>());
+    float warp_sum = tile_reduce_sum(warp, thread_sum_sq);
 
     int warp_id = threadIdx.x / 64;
     int lane_id = threadIdx.x % 64;
@@ -129,7 +130,7 @@ __global__ void rmsnorm_kernel_vectorized(floatX* __restrict__ out, float* __res
 
     if (warp_id == 0) {
         float val = (lane_id < num_warps) ? s_sum_sq[lane_id] : 0.0f;
-        float block_sum = cg::reduce(warp, val, cg::plus<float>());
+        float block_sum = tile_reduce_sum(warp, val);
 
         if (lane_id == 0) {
             float rms = sqrtf(block_sum / (float)C + eps);
@@ -245,7 +246,7 @@ __global__ void rmsnorm_backward_kernel(float* __restrict__ d_inp, float* __rest
         thread_dot += g_val * w_val * x_val;
     }
 
-    float warp_dot = cg::reduce(warp, thread_dot, cg::plus<float>());
+    float warp_dot = tile_reduce_sum(warp, thread_dot);
 
     int warp_id = threadIdx.x / 64;
     int lane_id = threadIdx.x % 64;
@@ -258,7 +259,7 @@ __global__ void rmsnorm_backward_kernel(float* __restrict__ d_inp, float* __rest
 
     if (warp_id == 0) {
         float val = (lane_id < num_warps) ? s_reduce[lane_id] : 0.0f;
-        float block_dot = cg::reduce(warp, val, cg::plus<float>());
+        float block_dot = tile_reduce_sum(warp, val);
         if (lane_id == 0) {
             s_reduce[0] = block_dot;
         }

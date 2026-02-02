@@ -21,16 +21,27 @@ import torch.nn as nn
 from typing import Optional, Tuple, Union
 import math
 
-# Try to import AITER ops
-from .aiter_ops import (
-    is_aiter_available,
-    get_aiter_info,
-    create_aiter_ops,
-    AITERRMSNorm,
-    AITERSigmoid,
-    AITERGEMM,
-    AITERStreamOps,
-)
+# Try to import AITER ops (handle both package and standalone imports)
+try:
+    from .aiter_ops import (
+        is_aiter_available,
+        get_aiter_info,
+        create_aiter_ops,
+        AITERRMSNorm,
+        AITERSigmoid,
+        AITERGEMM,
+        AITERStreamOps,
+    )
+except ImportError:
+    from aiter_ops import (
+        is_aiter_available,
+        get_aiter_info,
+        create_aiter_ops,
+        AITERRMSNorm,
+        AITERSigmoid,
+        AITERGEMM,
+        AITERStreamOps,
+    )
 
 # Try to import custom HIP kernels
 try:
