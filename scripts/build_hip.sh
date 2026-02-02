@@ -109,20 +109,26 @@ if [ "$DO_INSTALL" = true ]; then
     }
     echo -e "${GREEN}✓ PyTorch ROCm detected${NC}"
     
-    # Install using the HIP setup script
-    pip install -e . --config-settings="--global-option=--plat-name=linux_x86_64" || {
-        # Fallback: try using setup_hip.py directly
-        echo -e "${YELLOW}Trying alternative install method...${NC}"
-        python setup_hip.py develop
-    }
+    # Set library path for linking
+    export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:$(python3 -c 'import torch; print(torch.__path__[0])')/lib:$ROCM_PATH/lib"
+    
+    # Install using the HIP setup script directly (pip uses wrong setup.py)
+    echo -e "${YELLOW}Installing with setup_hip.py...${NC}"
+    python3 setup_hip.py develop
     
     echo -e "${GREEN}✓ Python extension installed${NC}"
+    echo ""
+    echo -e "${YELLOW}Note: Add to your environment before importing:${NC}"
+    echo "  export LD_LIBRARY_PATH=\$(python3 -c 'import torch; print(torch.__path__[0])')/lib:\$ROCM_PATH/lib:\$LD_LIBRARY_PATH"
 fi
 
 # Run tests
 if [ "$DO_TEST" = true ]; then
     echo ""
     echo -e "${YELLOW}Running tests...${NC}"
+    
+    # Ensure LD_LIBRARY_PATH is set
+    export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:$(python3 -c 'import torch; print(torch.__path__[0])')/lib:$ROCM_PATH/lib"
     
     # Python tests
     if python3 -c "import mhc_hip" 2>/dev/null; then
@@ -162,6 +168,9 @@ fi
 if [ "$DO_BENCH" = true ]; then
     echo ""
     echo -e "${YELLOW}Running benchmarks...${NC}"
+    
+    # Ensure LD_LIBRARY_PATH is set
+    export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:$(python3 -c 'import torch; print(torch.__path__[0])')/lib:$ROCM_PATH/lib"
     
     if python3 -c "import mhc_hip" 2>/dev/null; then
         python3 -c "
